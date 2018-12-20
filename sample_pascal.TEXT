@@ -1,0 +1,296 @@
+
+
+$UCSD$
+$REF 150$
+$DEF 150$
+$SYSPROG$
+$INCLUDE '#50:SEARCH.TEXT'$ 
+
+
+MODULE FM_MAIN  ;
+
+
+
+IMPORT JGLOBAL, INIT, USER_INP, SYSGLOBALS, STS_GLOBALS, call_lib, emu_globals, 
+       SYSDEVS, STS_ERROR, SERVICE, HANDLER, IOCOMASM, cdmalt_screen ;
+
+
+EXPORT
+   PROCEDURE FM_initialization ;
+   PROCEDURE FM_no_codeload(u : user_string_type);
+   PROCEDURE FM_user_input ;
+   PROCEDURE FM_DisplayOff ;
+   PROCEDURE FM_MessageHandler ;
+   PROCEDURE FM_DisplayOn(x : INTEGER ) ;
+
+IMPLEMENT
+
+
+
+PROCEDURE FM_ReadConfiguration ;
+Begin
+
+End ;
+
+
+
+
+
+
+
+PROCEDURE FM_DisplayOn(x : INTEGER ) ;
+Begin
+	DisplayBTS(x) ;
+
+End ;
+
+
+
+PROCEDURE FM_initialization ;
+Begin
+   Initialize ;
+End ;
+
+
+
+PROCEDURE FM_MessageHandler ;
+Begin
+	MainHandler ;
+End ;
+
+
+
+PROCEDURE FM_user_input ;
+Begin
+	user_input ;
+End ;
+
+
+PROCEDURE FM_DisplayOff ;
+Begin
+    display := FALSE ;
+End ;
+
+
+
+
+
+PROCEDURE FM_no_codeload(u : user_string_type);
+
+VAR
+    i,j,t   : integer;
+    a,b,c,d : integer;
+    rel1,rel2,rel3,rel4,rel5     : INTEGER ;
+    out1,out2,out3,out4          : INTEGER ;
+    load                         : user_string_type ;
+
+begin
+TRY
+   load := u ;
+
+   strread(load,1,i,rel1,rel2,rel3,rel4,rel5) ;
+
+   out1 := 128 + rel1 ;
+   out2 := binand(binasl(rel2,3),255) + binasr(rel3,2) ;
+   out3 := binand(binasl(rel3,6),255) + binasr(rel4,1) ;
+   out4 := binand(binasl(rel4,7),255) + rel5 ;
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 8 DO
+          Begin
+                bts^[i].glis[j].ram_version[1] := chr(out1) ;
+                bts^[i].glis[j].ram_version[2] := chr(out2) ;
+                bts^[i].glis[j].ram_version[3] := chr(out3) ;
+                bts^[i].glis[j].ram_version[4] := chr(out4) ;
+        End ;
+
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 12 DO
+          Begin
+                bts^[i].lcis[j].ram_version[1] := chr(out1) ;
+                bts^[i].lcis[j].ram_version[2] := chr(out2) ;
+                bts^[i].lcis[j].ram_version[3] := chr(out3) ;
+                bts^[i].lcis[j].ram_version[4] := chr(out4) ;
+        End ;
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 2 DO
+          Begin
+                bts^[i].csms[j].ram_version[1] := chr(out1) ;
+                bts^[i].csms[j].ram_version[2] := chr(out2) ;
+                bts^[i].csms[j].ram_version[3] := chr(out3) ;
+                bts^[i].csms[j].ram_version[4] := chr(out4) ;
+        End ;
+
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 8 DO
+          Begin
+                bts^[i].bdcs[j].ram_version[1] := chr(out1) ;
+                bts^[i].bdcs[j].ram_version[2] := chr(out2) ;
+                bts^[i].bdcs[j].ram_version[3] := chr(out3) ;
+                bts^[i].bdcs[j].ram_version[4] := chr(out4) ;
+        End ;
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 16 DO
+          Begin
+                bts^[i].bbxs[j].ram_version[1] := chr(out1) ;
+                bts^[i].bbxs[j].ram_version[2] := chr(out2) ;
+                bts^[i].bbxs[j].ram_version[3] := chr(out3) ;
+                bts^[i].bbxs[j].ram_version[4] := chr(out4) ;
+        End ;
+
+
+   FOR i := 1 TO 8 DO
+        FOR j := 1 TO 80 DO
+          Begin
+                bts^[i].mccs[j].core_data.ram_version[1] := chr(out1) ;
+                bts^[i].mccs[j].core_data.ram_version[2] := chr(out2) ;
+                bts^[i].mccs[j].core_data.ram_version[3] := chr(out3) ;
+                bts^[i].mccs[j].core_data.ram_version[4] := chr(out4) ;
+        End ;
+
+
+                        
+
+
+RECOVER
+   log_err('MAIN:no_codeload Error') ;
+
+
+End ;
+
+
+
+
+
+
+
+
+
+
+
+{******************************************************************************
+
+* FUNCTION NAME         : ServiceInboundEvent
+*
+******************************************************************************}
+
+PROCEDURE ServiceInboundEventXX(use : user_string_type)  ;
+CONST
+    REMOTE_OPR = FALSE; 
+    RmtOpTimerCorr = 1.981;               { Added due to the problems in the
+                                          cyclic timer under Remote operation
+                                          - from Graham Byars, hp scotland }
+VAR
+    CycTimerValue : integer;
+    next_msg      : log_item_ptr ;
+    event         : BYTE ;
+    user_string   : user_string_type ;
+    tool_finished : BOOLEAN ;
+
+BEGIN
+
+    tool_finished := FALSE;
+    user_string := ' ' ;
+    set_sdl_timer(1,500);
+
+
+    REPEAT
+        
+        TRY
+            CheckLogOverflow ;
+        RECOVER
+            write(#13,#9,'F1:ChkLgOvfl:esc=', escapecode:6);
+
+        TRY
+            GetLogMessage (next_msg) ;
+        RECOVER
+            write(#13,#9,'F2:GetLogMsg:esc=', escapecode:6);
+
+            WHILE (next_msg = EndOfData) DO
+              Begin
+                 IF  (keybuffer^.size <> 0) THEN FM_user_input ;
+              End ;
+
+
+            event := next_msg^.tag ;
+
+            
+            CASE event  OF
+
+                input_msg :   BEGIN
+                                TRY
+                                   msg_in  := next_msg ; 
+                                   link_in := next_msg^.link_spec ;
+                                   FM_MessageHandler ;
+                                RECOVER
+                                   log_user_string('MAIN:Error in tool; Err 1') ;
+                              END ;
+                              
+                timer_event   :
+                    CASE next_msg^.detail[-2] OF
+                        1         : Begin
+                                        set_sdl_timer(1,500);
+                                        IF  (keybuffer^.size <> 0) THEN 
+                                            FM_user_input ;
+                                    End ;
+                        OTHERWISE ;
+                    END;
+
+                internal_event :
+                      CASE next_msg^.detail[-2] OF
+                        2         : tool_finished := TRUE ;
+                        OTHERWISE ;
+                    END;
+
+                output_msg,
+                output_text : ;
+
+                OTHERWISE
+                BEGIN
+                    CASE event OF
+
+                        auto_level3_msg :
+                            WRITELN('AUTO_LEVEL3_MSG in EMU log');
+                        fw_event        :
+                            WRITELN('FIRMWARE LEVEL 2 event in EMU log');
+                        sw_event        :
+                            WRITELN('SOFTWARE MISC. event in EMU log');
+                        pipe_fw_error   :
+                            WRITELN('PIPE FIRMWARE LEVEL 2 error in EMU log');
+                        call_event      :
+                            WRITELN('/UNEXPECTED USER TEXT in EMU log');
+                        call_input_msg  :
+                            WRITELN('MESSAGE FROM PASCAL ROUTINE in EMU log');
+                        ui_input_msg    :
+                            WRITELN('INCOMING ISDN UI FRAME in EMU log');
+                        isdn_primitive_input_msg :
+                            WRITELN('ISDN PRIMITIVE (IN) in EMU log');
+                        isdn_primitive_output_msg :
+                            WRITELN('ISDN PRIMITIVE (OUT) in EMU log');
+
+                        OTHERWISE
+                         WRITELN('/UNKNOWN event in EMU log : FATAL HALT');
+
+                    END ; { of CASE event }
+
+                END ; { of BEGIN otherwise }
+
+            END ; { of CASE event }
+
+            { Move pointer on to next message in the test log }
+            TRY
+            MoveLogPointer ;
+            RECOVER
+            write(#13,#9,'Ferror:ServInEv:MvLogPtr:esc=',escapecode:6);
+
+
+
+    UNTIL tool_finished ;
+
+END ;
+
+END.
